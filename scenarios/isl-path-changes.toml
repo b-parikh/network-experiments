@@ -1,5 +1,6 @@
-# File starts on a source satellite ("ground" container), crosses ISLs to the main satellite,
-# then downlinks to the ground station ("terminal" container).
+# The file starts on a source satellite and crosses ISLs to the downlinking satellite, then goes
+# down to the ground station. The "satellite" container stands for that whole space segment: the
+# ISL hops only add delay ([isl] delay), so the topology is still satellite <-> ground station.
 # Main-satellite switches change the ISL delay and the downlink together.
 preset = "leo"
 
@@ -19,7 +20,7 @@ t = 180                                  # switch with a 500 ms blackout
 switch = { isl_delay = "25ms", downlink = { delay = "25ms", rate = "200mbit" }, gap_ms = 500 }
 
 [app]
-sender = "ground"
+sender = "satellite"
 recv_cmd = "iperf3 -s -1"
 send_cmd = "iperf3 -c {peer} -t 240"
 timeout = 400

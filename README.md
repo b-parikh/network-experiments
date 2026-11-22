@@ -3,9 +3,9 @@
 Emulate an asymmetric satellite link between two Docker containers with Linux `tc` (netem + tbf), to test file-transfer applications and protocols. One Python script (`satlink.py`, stdlib only; matplotlib optional for plots). Design and rationale: [plan.md](plan.md).
 
 ```
-[ground] --veth-- bridge satlink0 --veth-- [terminal]
-   downlink (ground -> terminal): shaped on terminal's host-side veth
-   uplink   (terminal -> ground): shaped on ground's host-side veth
+[satellite] --veth-- bridge satlink0 --veth-- [ground]   (ground = ground station)
+   downlink (satellite -> ground): shaped on ground's host-side veth
+   uplink   (ground -> satellite): shaped on satellite's host-side veth
 ```
 
 Each direction is `netem` (delay, jitter, loss) feeding a `tbf` FIFO (rate, buffer depth in ms). Nothing is shaped inside the containers, which keeps TCP results honest.
@@ -25,7 +25,7 @@ sudo ./satlink.py run scenarios/narrowing-link.toml
 sudo ./satlink.py down
 ```
 
-Your own application: `sudo ./satlink.py up --image my-image` (the image needs `sh`, `timeout`, `sha256sum`, `head`; containers run `sleep infinity` and you start your tools through the scenario's `send_cmd` / `recv_cmd`). Addresses: ground `172.30.0.2`, terminal `172.30.0.3`.
+Your own application: `sudo ./satlink.py up --image my-image` (the image needs `sh`, `timeout`, `sha256sum`, `head`; containers run `sleep infinity` and you start your tools through the scenario's `send_cmd` / `recv_cmd`). Addresses: satellite `172.30.0.2`, ground `172.30.0.3`.
 
 ## Commands
 
@@ -46,7 +46,7 @@ For manual testing: `apply leo`, run your tools with `docker exec`, and use `out
 ```toml
 preset = "leo"                          # presets/*.toml: leo, narrowband, gigabit
 
-[downlink]                              # ground -> terminal. [uplink] has the same keys
+[downlink]                              # satellite -> ground station. [uplink] has the same keys
 rate = "200mbit"                        # tc units: bit, kbit, mbit, gbit
 delay = "25ms"                          # one-way
 jitter = "4ms"                          # note: jitter also causes reordering
@@ -69,7 +69,7 @@ t = 300                                 # main-satellite switch: ISL path and do
 switch = { isl_delay = "12ms", downlink = { delay = "22ms", rate = "150mbit" }, gap_ms = 0 }
 
 [app]                                   # optional; without it the timeline just runs against whatever you start
-sender = "ground"                       # or "terminal"
+sender = "satellite"                    # or "ground"
 file_size = "500M"                      # optional: random file generated on the sender; sha256 verified after
 send_cmd = "..."                        # run in the sender container
 recv_cmd = "..."                        # run in the receiver container, started first
@@ -114,7 +114,7 @@ cfdp recv --local-id 2 --remote-id 1 --out-dir /data --once
 - Timers: `--ack-interval/--ack-limit`, `--nak-interval/--nak-limit`, `--check-interval/--check-limit` (library defaults 10 s x 2). The entities are blind to outages. If the link is dark longer than interval x limit, the transaction is cancelled (`POSITIVE_ACK_LIMIT_REACHED`, `NAK_LIMIT_REACHED`), so outage scenarios set long timers. cfdp-py has no inactivity timer; `--timeout` is a local wall-clock limit.
 - The sender's UDP and the receiver's socket buffers are requested at 8 MiB; the kernel caps them at `net.core.rmem_max`/`wmem_max`. Raise those sysctls on the host and in containers for fast links.
 - Exit codes: 0 success, 2 CFDP fault or incomplete file, 3 local timeout or terminated early. The last output line is a JSON report (condition, durations, goodput, retransmitted bytes, NAKs, PDU counts, Finished PDU contents). satlink copies it into `summary.json` as `sender_report` / `receiver_report`.
-- Ports: both entities use UDP 4444. IDs: ground 1, terminal 2.
+- Ports: both entities use UDP 4444. IDs: satellite 1, ground 2.
 
 Scenarios: `cfdp-class2-leo`, `cfdp-class1-leo` (fails the sha256 check by design under loss), `cfdp-narrowband`, `cfdp-long-outage`.
 
@@ -126,7 +126,6 @@ Local runs and development use uv: `uv venv && uv pip install -e .[plots]` or `u
 - netem sits before tbf, so it holds everything in flight for the delay. Its `limit` is sized for a 10 Gbit/s offered load; a sender exceeding that sees drops in netem rather than in the tbf queue.
 - Outages delete the root qdisc, which flushes everything, then rebuild it on restore. TCP counters in the containers are not touched.
 - netem's per-packet randomness is not seeded. Scenario timing is deterministic; loss patterns are not.
-- Handover timing is on the wall clock of the host only because events are relative to transfer start.
 
 ## Status
 
@@ -134,6 +133,6 @@ Verified in a sandbox without netem or Docker: command generation and timeline o
 
 Not yet run on a real host: `up`/veth discovery, netem delay/jitter/loss, `validate` end to end, the `uftp` baseline (option syntax taken from the Debian usage text), and the 1 Gbit + 600 ms case. Run `validate` first on your host; if the netem + tbf chain does not hold at 1 Gbit, see the fallback in plan.md.
 
-Not in v1 (see "Later" in plan.md): live control, periodic LEO handovers, CAKE, cross traffic, VM support.
+Not in v1 (see "Later" in plan.md): live control, pass/contact schedules, CAKE, cross traffic, VM support.
 
 CFDP entity, verified on loopback through a lossy UDP relay (not through satlink or real netem): Class 2 delivers an identical file under 5% loss in both directions (271 NAKs, 456 KB retransmitted of 8 MiB); Class 1 reports `DATA_INCOMPLETE`; a 10 s outage over EOF cancels the transfer with default-style short timers and completes with long timers; pacing is accurate from 2 to 40 Mbit/s; `SIGTERM` still yields the report. Not yet run: the image build, the CFDP scenarios through satlink, gemodel loss.

@@ -7,7 +7,7 @@ preset = "leo"
 netem = "loss gemodel 0.5% 40%"
 
 [app]
-sender = "ground"
+sender = "satellite"
 file_size = "100M"
 recv_cmd = "cfdp recv --local-id 2 --remote-id 1 --out-dir /data --once --class 2 --ack-interval 5 --nak-interval 5"
 send_cmd = "cfdp send {file} {out} --local-id 1 --remote-id 2 --remote {peer}:4444 --class 2 --rate 150mbit --ack-interval 5 --nak-interval 5"

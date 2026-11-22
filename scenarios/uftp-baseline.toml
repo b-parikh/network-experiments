@@ -3,7 +3,7 @@
 preset = "leo"
 
 [app]
-sender = "ground"
+sender = "satellite"
 file_size = "50M"
 recv_file = "/data/recv/payload.bin"
 recv_cmd = "uftpd -d -E -D /data/recv"

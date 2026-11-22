@@ -7,7 +7,7 @@ t = 30
 outage = { duration = 180, dir = "both" }
 
 [app]
-sender = "ground"
+sender = "satellite"
 recv_cmd = "iperf3 -s -1 --rcv-timeout 600000"
 send_cmd = "iperf3 -c {peer} -t 300 --rcv-timeout 600000"
 timeout = 600

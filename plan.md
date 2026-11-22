@@ -8,7 +8,8 @@ Test file-transfer applications and protocols (TCP, custom UDP, QUIC, DTN/CFDP) 
 - A link that narrows in steps over time
 - Random and bursty packet loss
 - Abrupt outages that reacquire minutes later (silent blackhole, both ways or one way)
-- ISL relay: file originates on a source satellite, crosses inter-satellite links to the main satellite, then downlinks. Path changes alter latency.
+- Topology: one satellite and one ground station. No user terminal, no bent-pipe relay through the satellite.
+- ISL relay: file may originate on a source satellite and cross inter-satellite links to the downlinking satellite. Modeled as extra delay on the satellite side; path changes alter latency.
 
 Use standard Linux tools (`tc`/netem, `tbf`, `ip`, `ethtool`, iperf3, UFTP, Docker). Glue is a single Python stdlib script plus matplotlib for plots.
 
@@ -23,7 +24,7 @@ v1 is deliberately minimal. Deferred items are listed under [Later](#later).
 | Host | Native Linux with root, Docker Engine |
 | Emulator location | On the Docker host, shaping host-side veth interfaces. No `NET_ADMIN` in app containers |
 | Endpoints | One sender, one receiver. Files move in both directions |
-| Roles | `ground` (gateway side) and `terminal` (user side). Downlink = ground -> terminal |
+| Roles | `satellite` and `ground` (ground station). Downlink = satellite -> ground |
 | Outages | Silent blackhole, `up`, `down` or `both`. Queued packets are dropped |
 | Return path | Same path as forward, independent up/down shaping |
 | Queueing | FIFO only, sized in ms |
@@ -36,7 +37,7 @@ v1 is deliberately minimal. Deferred items are listed under [Later](#later).
 ## Architecture
 
 ```
- [ground container] --veth-- docker bridge --veth-- [terminal container]
+ [satellite container] --veth-- docker bridge --veth-- [ground container]
           ^                                                ^
   host-side veth egress = UPLINK chain        host-side veth egress = DOWNLINK chain
 ```
@@ -78,11 +79,11 @@ For each container, read `/sys/class/net/eth0/iflink` inside its namespace (`nse
 ## ISL relay scenario
 
 ```
-source sat --[ISL path: isl_delay]--> main sat --[downlink: rate/delay/loss/queue]--> ground
- ("ground" container)                                                      ("terminal" container)
+source sat --[ISL path: isl_delay]--> downlinking sat --[downlink: rate/delay/loss/queue]--> ground station
+ \_________________ "satellite" container _________________/                    "ground" container
 ```
 
-- The `ground` container plays the source satellite and `terminal` plays the receiving ground station. Downlink stays ground -> terminal.
+- The `satellite` container stands for the whole space segment; ISL hops are only delay. Downlink = satellite -> ground.
 - One-way delay per direction = `delay + isl_delay`. `isl_delay` applies to both directions at the same moment. `isl_delay = 0` is the plain bent-pipe case.
 
 ### Main-satellite switch event
@@ -145,7 +146,7 @@ t = 300
 switch = { isl_delay = "12ms", downlink = { delay = "22ms" }, gap_ms = 0 }
 
 [app]
-sender = "ground"                       # or "terminal"
+sender = "satellite"                    # or "ground"
 file_size = "500M"
 recv_cmd = "..."
 send_cmd = "..."
@@ -178,7 +179,7 @@ Outage recovery time and switch stalls are read off the plot and time series.
 ## Containers
 
 - `satlink-endpoint`: Debian-based image with iperf3, UFTP, sha256sum, coreutils.
-- `docker/compose.yml`: `ground` and `terminal` on one user-defined bridge.
+- `docker/compose.yml`: `satellite` and `ground` on one user-defined bridge.
 - Your own apps replace the endpoint image with `satlink up --image <image>`; commands come from the scenario.
 
 ## Repository layout
@@ -239,7 +240,7 @@ README.md
 
 Built on `cfdp-py` 0.7.0 (`cfdppy`, Apache-2.0). It supplies the Class 1/2 state machines and PDU encoding; the glue is ours: one script, `cfdp_entity.py`, with `send` and `recv` modes.
 
-- UDP port 4444, one socket per entity. Data PDUs use the downlink, NAK/ACK/Finished PDUs the uplink. Entity IDs: ground 1, terminal 2.
+- UDP port 4444, one socket per entity. Data PDUs use the downlink, NAK/ACK/Finished PDUs the uplink. Entity IDs: satellite 1, ground 2.
 - `--class 1|2` per run. Class 1: no retransmission, success means EOF sent. Class 2: NAK-based retransmission, success means Finished received.
 - `--rate <tc units>`: token-bucket pacing of every outgoing PDU, retransmissions included. CFDP has no congestion control, so this is how the sender is sized to the link. `0` = unpaced. Default segment 1400 bytes (no IP fragmentation at MTU 1500).
 - Timer flags map one-to-one to cfdp-py (`--ack-interval/--ack-limit`, `--nak-interval/--nak-limit`, `--check-interval/--check-limit`). cfdp-py has no inactivity timer; `--timeout` is a local wall-clock limit. Entities are blind to outages, so outage scenarios set long timers. Library defaults (10 s intervals, limit 2) end a transaction in roughly 20 s of silence.
@@ -257,7 +258,7 @@ Testing plan: loopback transfer per class with sha256 check; paced transfer over
 - Live control over a Unix socket during automated runs
 - Faster CFDP entity for gigabit rates (C/Rust implementation, or multi-process sender)
 - Link-aware CFDP freeze/thaw: satlink tells the CFDP entities when the link goes down or up (like a known contact schedule) so they suspend timers during outages, instead of relying on long blind timers
-- Periodic LEO handovers (15s, wall-clock aligned, seeded delay draws, loss bursts)
+- Pass/contact schedules: AOS/LOS windows and elevation-dependent delay and rate during a pass (replaces the earlier Starlink-style 15 s handover idea, which applies to user terminals)
 - CAKE/AQM queue option
 - Cross-traffic sidecars and timeline events
 - `gap_flush` (drop in-flight packets on a switch)

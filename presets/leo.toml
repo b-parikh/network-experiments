@@ -1,4 +1,4 @@
-# LEO terminal: asymmetric, ~50 ms RTT, 300 ms of modem buffer.
+# LEO satellite to ground station: asymmetric, ~50 ms RTT, 300 ms of modem buffer.
 [downlink]
 rate = "200mbit"
 delay = "25ms"        # one-way

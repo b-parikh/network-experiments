@@ -8,7 +8,7 @@ t = 10
 outage = { duration = 180, dir = "both" }
 
 [app]
-sender = "ground"
+sender = "satellite"
 file_size = "100M"
 recv_cmd = "cfdp recv --local-id 2 --remote-id 1 --out-dir /data --once --class 2 --ack-interval 60 --ack-limit 5 --nak-interval 60 --nak-limit 5"
 send_cmd = "cfdp send {file} {out} --local-id 1 --remote-id 2 --remote {peer}:4444 --class 2 --rate 50mbit --ack-interval 60 --ack-limit 5 --nak-interval 60 --nak-limit 5"

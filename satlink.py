@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """satlink: emulate an asymmetric satellite link between two Docker containers using tc.
 
-Roles: `ground` and `terminal`. Downlink = ground -> terminal, uplink = terminal -> ground.
+Roles: `satellite` and `ground`. Downlink = satellite -> ground, uplink = ground -> satellite.
 Each direction is shaped on the host-side veth of the RECEIVING container:
 
     root  1:  netem  (one-way delay + isl delay, jitter, raw netem options)
@@ -27,10 +27,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 COMPOSE = ROOT / "docker" / "compose.yml"
 STATE_FILE = ROOT / ".satlink-state.json"
-CONTAINER = {"ground": "satlink-ground", "terminal": "satlink-terminal"}
-IP = {"ground": "172.30.0.2", "terminal": "172.30.0.3"}
+CONTAINER = {"satellite": "satlink-satellite", "ground": "satlink-ground"}
+IP = {"satellite": "172.30.0.2", "ground": "172.30.0.3"}
 DIRS = ("down", "up")
-RECEIVER = {"down": "terminal", "up": "ground"}  # whose host veth carries the shaping
+RECEIVER = {"down": "ground", "up": "satellite"}  # whose host veth carries the shaping
 SECTION = {"down": "downlink", "up": "uplink"}
 DIR_OF = {v: k for k, v in SECTION.items()}
 DEFAULT_DIR = {"rate": "100mbit", "delay": "25ms", "jitter": "0ms", "queue_ms": 300, "netem": ""}
@@ -370,7 +370,7 @@ def make_plot(outdir, marks, title):
         print("no samples collected; skipping plot")
         return
     fig, axes = plt.subplots(2, 1, sharex=True, figsize=(11, 7))
-    names = {"down": "Downlink (ground -> terminal)", "up": "Uplink (terminal -> ground)"}
+    names = {"down": "Downlink (satellite -> ground)", "up": "Uplink (ground -> satellite)"}
     for ax, d in zip(axes, DIRS):
         r = [x for x in rows if x["dir"] == d]
         t = [float(x["t"]) for x in r]
@@ -451,10 +451,10 @@ class App:
 
     def __init__(self, a, outdir):
         self.a, self.outdir = a, outdir
-        self.sender = a.get("sender", "ground")
+        self.sender = a.get("sender", "satellite")
         if self.sender not in CONTAINER:
-            raise SystemExit("[app] sender must be 'ground' or 'terminal'")
-        self.recv = "terminal" if self.sender == "ground" else "ground"
+            raise SystemExit("[app] sender must be 'satellite' or 'ground'")
+        self.recv = "ground" if self.sender == "satellite" else "satellite"
         self.size = parse_size(a["file_size"]) if "file_size" in a else None
         self.timeout = int(a.get("timeout", 3600))
         self.verify = a.get("verify", self.size is not None)
@@ -646,14 +646,14 @@ def cmd_validate(a):
         link = Link(cfg, devs)
         link.apply_all()
         results = []
-        # RTT: ground -> terminal pays the downlink, the echo pays the uplink (+ ISL both ways)
+        # RTT: satellite -> ground pays the downlink, the echo pays the uplink (+ ISL both ways)
         exp = link.delay("down") + link.delay("up") + 84 * 8 / link.rate("down") + 84 * 8 / link.rate("up")
-        out = dexec("ground", f"ping -c 5 -i 0.3 -q {IP['terminal']}", check=False).stdout
+        out = dexec("satellite", f"ping -c 5 -i 0.3 -q {IP['ground']}", check=False).stdout
         m = re.search(r"= [\d.]+/([\d.]+)/", out)
         rtt = float(m[1]) / 1e3 if m else None
         ok = rtt is not None and abs(rtt - exp) <= max(0.003, 0.1 * exp)
         results.append(("rtt", f"{exp * 1e3:.1f} ms", f"{rtt * 1e3:.1f} ms" if rtt else "n/a", ok))
-        for d, sender in (("down", "ground"), ("up", "terminal")):
+        for d, sender in (("down", "satellite"), ("up", "ground")):
             recv, rate = RECEIVER[d], link.rate(d)
             dexec(recv, "pkill iperf3; rm -f /tmp/srv.json", check=False)
             run(["docker", "exec", "-d", CONTAINER[recv], "sh", "-c", "iperf3 -4 -s -1 -J > /tmp/srv.json 2>/dev/null"])
