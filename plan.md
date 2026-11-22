@@ -193,11 +193,31 @@ scenarios/
   narrowing-link.toml
   long-outage.toml
   isl-path-changes.toml
+  cfdp-class2-leo.toml, cfdp-class1-leo.toml, cfdp-narrowband.toml, cfdp-long-outage.toml
+apps/cfdp/cfdp_entity.py   # CFDP sender/receiver, installed in the image as cfdp-entity
 docker/
   compose.yml
   endpoint/Dockerfile
 README.md
 ```
+
+## CFDP entities
+
+`apps/cfdp/cfdp_entity.py` is a CFDP file sender and receiver (Class 1 and 2) over UDP, built on cfdp-py 0.7.0 (`cfdppy`, Apache-2.0), which provides the state machines and PDU encoding but no transport. Our code is a single-threaded `select` loop, a token-bucket pacer and a CLI.
+
+| Choice | Decision |
+|---|---|
+| Library | cfdp-py. LibreCube `cfdp` 0.2.0 was the alternative: less glue, but older and no pacing |
+| Classes | Both, `--class 1\|2` per run |
+| Pacing | `--rate`, counting wire bytes (PDU + 42). CFDP has no congestion control |
+| Outages | Entities are blind to them. Timer limits are flags set per scenario (`--ack-*`, `--nak-*`, `--check-*`) |
+| Entity IDs | satellite = 1, ground = 2, UDP port 4444 |
+| Reports | One JSON line per side, captured into `summary.json` |
+| Faults | Checksum failure cancels (the library default ignores it) so Class 1 loss is visible |
+
+The endpoint image installs cfdp-py in `/opt/cfdp` and the script as `cfdp-entity`. The compose build context is the repository root so the Dockerfile can copy it.
+
+Scenarios: `cfdp-class2-leo` (bursty loss), `cfdp-class1-leo`, `cfdp-narrowband` (NAKs over a 64 kbit/s uplink), `cfdp-long-outage` (3 minute blackhole, long timers).
 
 ## Phases
 
@@ -237,6 +257,7 @@ README.md
 
 ## Later
 
+- Link-aware CFDP freeze/thaw: satlink tells the entities when an outage starts and ends (a known contact schedule, e.g. via a state file or UDP control message) so they suspend their timers instead of relying on long blind timers
 - Live control over a Unix socket during automated runs
 - Periodic LEO handovers (15s, wall-clock aligned, seeded delay draws, loss bursts)
 - CAKE/AQM queue option
@@ -253,5 +274,7 @@ README.md
 - MTU knob, IPv6, TCP congestion control knobs
 
 ## Implementation status
+
+The CFDP entity is implemented and tested on loopback behind a lossy/blackholing UDP proxy (Python 3.11 and 3.12). The image build and the CFDP scenarios over the real emulated link are not yet run.
 
 Phases 1 to 4 are implemented in `satlink.py`. Checked without root-level netem or Docker: dry-run command generation, timeline ordering, tbf rate accuracy (64 kbit to 1 Gbit, on a veth pair), `validate`'s iperf3 parsing, plots. Still to run on a real host: veth discovery, netem behavior, `validate`, UFTP baseline, the 1 Gbit + 600 ms go/no-go. See README.md "Status".

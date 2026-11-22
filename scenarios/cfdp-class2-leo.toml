@@ -1,0 +1,16 @@
+# CFDP Class 2 (acknowledged, NAK-based retransmission): 100 MiB from the satellite to the ground
+# station over the LEO preset with bursty loss. CFDP has no congestion control, so the sender is
+# paced to 150 Mbit/s (link: 200 Mbit/s). The Python sender tops out around 200 Mbit/s.
+# Satellite = CFDP entity 1, ground station = entity 2.
+preset = "leo"
+
+[downlink]
+netem = "loss gemodel 0.5% 40%"
+
+[app]
+sender = "satellite"
+file_size = "100M"
+recv_file = "/data/recv/payload.bin"
+recv_cmd = "cfdp-entity recv --local-id 2 --remote-id 1 --out-dir /data/recv --once --timeout 580"
+send_cmd = "cfdp-entity send {file} payload.bin --local-id 1 --remote-id 2 --remote {peer}:4444 --class 2 --rate 150mbit --timeout 580"
+timeout = 600

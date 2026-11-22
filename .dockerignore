@@ -1,0 +1,5 @@
+.git
+results/
+__pycache__/
+*.swp
+.satlink-state.json

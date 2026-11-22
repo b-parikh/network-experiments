@@ -436,6 +436,16 @@ def dexec(role, cmd, check=True):
 
 # ----------------------------------------------------------------------------- app harness
 
+def last_json(path):
+    """Apps may print a JSON object as their last line; keep it as that side's report."""
+    try:
+        lines = Path(path).read_text().strip().splitlines()
+        obj = json.loads(lines[-1]) if lines else None
+    except (OSError, ValueError):
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
 class App:
     """Runs the user's send/receive commands inside the containers and verifies the file."""
 
@@ -506,6 +516,10 @@ class App:
             res["sha256_match"] = bool(a) and a == b
             if res["sha256_match"] and self.duration:
                 res["goodput_mbps"] = round(self.size * 8 / self.duration / 1e6, 3)
+        for key, log in (("sender_report", "sender.log"), ("receiver_report", "receiver.log")):
+            report = last_json(self.outdir / log)
+            if report:
+                res[key] = report
         return res
 
 

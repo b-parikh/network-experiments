@@ -83,6 +83,35 @@ The timeline starts when the sender starts. The run ends when `send_cmd` exits o
 
 `switch` and `set` use `tc qdisc change`, so packets already queued keep their old delay. A shorter path lets new packets overtake old ones (reordering); a longer path gives a delivery gap. `gap_ms` adds a blackout during which new arrivals are dropped.
 
+## CFDP sender and receiver
+
+`apps/cfdp/cfdp_entity.py` (installed in the endpoint image as `cfdp-entity`) sends and receives files with CFDP (CCSDS 727.0-B) over UDP, using [cfdp-py](https://github.com/us-irs/cfdp-py) 0.7.0. Class 1 and Class 2, one file per run.
+
+```
+cfdp-entity recv --local-id 2 --remote-id 1 --out-dir /data/recv --once
+cfdp-entity send /data/payload.bin payload.bin --local-id 1 --remote-id 2 --remote 172.30.0.3:4444 --class 2 --rate 150mbit
+```
+
+The scenarios use satellite = entity 1, ground station = entity 2, UDP port 4444. The destination path is relative to the receiver's `--out-dir`. The receiver replies to whichever address sent to it.
+
+- **Class 1** is unacknowledged: data is sent once. The sender reports success when EOF is sent. The receiver reports `FILE_CHECKSUM_FAILURE` and `DATA_INCOMPLETE` if loss hit the file (the library default would ignore a checksum failure; this tool cancels on it).
+- **Class 2** is acknowledged: the receiver NAKs missing data, and the sender succeeds only when the receiver's Finished PDU says the file is complete.
+- **`--rate`** paces the sender. CFDP has no congestion control, so set it at or below the link rate. It counts wire bytes (PDU + 42 bytes of Ethernet/IP/UDP), the same way the link's `tbf` does. Measured pacing error is under 1% from 2 to 100 Mbit/s. The Python sender tops out around 200 Mbit/s unpaced.
+- **`--segment`** is file bytes per PDU (default 1400, so a PDU fits one unfragmented datagram at MTU 1500).
+- **Timers.** The entities cannot see link outages, so their timers must outlast them. Defaults are the library's:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--ack-interval` / `--ack-limit` | 10 s / 2 | Wait for an ACK (of EOF at the sender, of Finished at the receiver) |
+| `--nak-interval` / `--nak-limit` | 10 s / 2 | Receiver repeats NAKs for missing data |
+| `--check-interval` / `--check-limit` | 5 s / 2 | Class 1 receiver waits for late data after EOF |
+
+With the defaults, a 15 s blackhole that started 1 s into a 4 s transfer abandoned it (`POSITIVE_ACK_LIMIT_REACHED` on the sender, `DATA_INCOMPLETE` on the receiver). The same outage succeeded with `--ack-interval 5 --ack-limit 20 --nak-interval 5 --nak-limit 20`. Scenarios with long outages set longer timers.
+
+Each side prints one JSON report as its last line (`ok`, `condition`, `finished_condition`, `delivery`, duration, goodput, PDU counts by type, `retransmitted_bytes`, faults). `satlink run` stores both lines in `summary.json` as `sender_report` and `receiver_report`. Exit codes: 0 success, 2 fault or incomplete delivery, 3 timeout.
+
+Scenarios: `cfdp-class2-leo`, `cfdp-class1-leo`, `cfdp-narrowband`, `cfdp-long-outage`.
+
 ## Results
 
 `results/<timestamp>-<scenario>/`
@@ -109,6 +138,8 @@ Outage recovery time is the gap between the end of the shaded region and deliver
 
 Verified in a sandbox without netem or Docker: command generation and timeline ordering (`--dry-run`), tbf rate accuracy from 64 kbit to 1 Gbit on a veth pair, the iperf3 JSON field used by `validate`, and plot generation.
 
-Not yet run on a real host: `up`/veth discovery, netem delay/jitter/loss, `validate` end to end, the `uftp` baseline (option syntax taken from the Debian usage text), and the 1 Gbit + 600 ms case. Run `validate` first on your host; if the netem + tbf chain does not hold at 1 Gbit, see the fallback in plan.md.
+The CFDP entity was tested on loopback against a UDP proxy that drops packets and blackholes windows (Class 2 recovers from 2% loss each way, Class 1 reports the loss, a 15 s blackhole fails with default timers and succeeds with long ones), on Python 3.11 and 3.12.
+
+Not yet run on a real host: `up`/veth discovery, netem delay/jitter/loss, `validate` end to end, the endpoint image build (`cfdp-py` install) and the CFDP scenarios over the emulated link, the `uftp` baseline (option syntax taken from the Debian usage text), and the 1 Gbit + 600 ms case. Run `validate` first on your host; if the netem + tbf chain does not hold at 1 Gbit, see the fallback in plan.md.
 
 Not in v1 (see "Later" in plan.md): live control, periodic LEO handovers, CAKE, cross traffic, VM support.

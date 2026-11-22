@@ -1,0 +1,17 @@
+# CFDP Class 2 through a 3-minute blackhole in both directions, starting 15 s into a ~45 s transfer.
+# The entities cannot see the outage, so their timers must outlast it: with the library defaults
+# (ACK/NAK 10 s x 2) the transaction is abandoned. Try removing the timer flags to see that.
+# Link-aware freeze/thaw (telling the entities about known contact windows) is future work.
+preset = "leo"
+
+[[event]]
+t = 15
+outage = { duration = 180, dir = "both" }
+
+[app]
+sender = "satellite"
+file_size = "100M"
+recv_file = "/data/recv/payload.bin"
+recv_cmd = "cfdp-entity recv --local-id 2 --remote-id 1 --out-dir /data/recv --once --ack-interval 60 --ack-limit 10 --nak-interval 60 --nak-limit 10 --timeout 1180"
+send_cmd = "cfdp-entity send {file} payload.bin --local-id 1 --remote-id 2 --remote {peer}:4444 --class 2 --rate 20mbit --ack-interval 60 --ack-limit 10 --nak-interval 60 --nak-limit 10 --timeout 1180"
+timeout = 1200

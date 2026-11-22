@@ -1,0 +1,15 @@
+# Same as cfdp-class2-leo.toml but Class 1 (unacknowledged): no retransmission. The sender reports
+# success once EOF is sent; the receiver reports FILE_CHECKSUM_FAILURE / DATA_INCOMPLETE when loss
+# hit the file, and satlink's sha256 check fails (run exits 1).
+preset = "leo"
+
+[downlink]
+netem = "loss gemodel 0.5% 40%"
+
+[app]
+sender = "satellite"
+file_size = "100M"
+recv_file = "/data/recv/payload.bin"
+recv_cmd = "cfdp-entity recv --local-id 2 --remote-id 1 --out-dir /data/recv --once --timeout 580"
+send_cmd = "cfdp-entity send {file} payload.bin --local-id 1 --remote-id 2 --remote {peer}:4444 --class 1 --rate 150mbit --timeout 580"
+timeout = 600

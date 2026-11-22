@@ -1,0 +1,11 @@
+# CFDP Class 2 over the 300 kbit/s downlink with a 64 kbit/s return link carrying the NAKs/ACKs.
+# 5 MiB at 250 kbit/s takes about three minutes.
+preset = "narrowband"
+
+[app]
+sender = "satellite"
+file_size = "5M"
+recv_file = "/data/recv/payload.bin"
+recv_cmd = "cfdp-entity recv --local-id 2 --remote-id 1 --out-dir /data/recv --once --timeout 880"
+send_cmd = "cfdp-entity send {file} payload.bin --local-id 1 --remote-id 2 --remote {peer}:4444 --class 2 --rate 250kbit --timeout 880"
+timeout = 900

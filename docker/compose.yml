@@ -3,7 +3,9 @@
 name: satlink
 x-endpoint: &endpoint
   image: ${SATLINK_IMAGE:-satlink-endpoint}
-  build: ./endpoint
+  build:
+    context: ..
+    dockerfile: docker/endpoint/Dockerfile
   command: sleep infinity
   init: true
 
