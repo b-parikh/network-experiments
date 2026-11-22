@@ -1,0 +1,13 @@
+# Degraded/narrowband link with a deep buffer (bufferbloat).
+[downlink]
+rate = "300kbit"
+delay = "30ms"
+queue_ms = 1000
+
+[uplink]
+rate = "64kbit"
+delay = "30ms"
+queue_ms = 1000
+
+[isl]
+delay = "0ms"

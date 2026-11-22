@@ -1,0 +1,13 @@
+# Silent blackhole in both directions for 3 minutes, then the link reacquires.
+# iperf3 needs a long receive timeout or it gives up during the outage.
+preset = "leo"
+
+[[event]]
+t = 30
+outage = { duration = 180, dir = "both" }
+
+[app]
+sender = "ground"
+recv_cmd = "iperf3 -s -1 --rcv-timeout 600000"
+send_cmd = "iperf3 -c {peer} -t 300 --rcv-timeout 600000"
+timeout = 600

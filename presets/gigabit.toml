@@ -1,0 +1,13 @@
+# Top of the range: 1 Gbit/s downlink, small buffer.
+[downlink]
+rate = "1gbit"
+delay = "25ms"
+queue_ms = 100
+
+[uplink]
+rate = "50mbit"
+delay = "25ms"
+queue_ms = 100
+
+[isl]
+delay = "0ms"

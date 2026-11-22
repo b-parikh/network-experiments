@@ -103,9 +103,9 @@ switch = { isl_delay = "12ms", downlink = { delay = "22ms", rate = "150mbit" }, 
 
 | Command | Purpose |
 |---|---|
-| `satlink up` / `satlink down` | Start/stop the compose stack, discover veths, disable offloads |
-| `satlink apply <preset or scenario>` | Manual mode: apply the static profile (no timeline) and exit |
-| `satlink outage <seconds> [--dir up\|down\|both]` | Manual outage: blackhole, wait, restore |
+| `satlink up [--image IMG]` / `satlink down` | Start/stop the compose stack, discover veths, disable offloads |
+| `satlink apply <preset or scenario>` | Manual mode: apply the static profile (no timeline), save it to `.satlink-state.json`, exit |
+| `satlink outage <seconds> [--dir up\|down\|both]` | Manual outage on the profile last applied: blackhole, wait, restore |
 | `satlink run <scenario.toml>` | Automated mode: apply, run timeline and transfer, collect results, plot |
 | `satlink validate` | Self-test: ping RTT and iperf3 throughput in each direction match the profile |
 | `satlink clear` | Remove all qdiscs |
@@ -120,8 +120,9 @@ preset = "leo"                          # base profile, then overrides
 [downlink]
 rate = "200mbit"
 delay = "20ms"
+jitter = "4ms"
 queue_ms = 300
-netem = "jitter 4ms loss gemodel 0.5% 40%"   # raw netem options, optional
+netem = "loss gemodel 0.5% 40%"        # raw netem options appended as-is, optional
 
 [uplink]
 rate = "15mbit"
@@ -145,7 +146,6 @@ switch = { isl_delay = "12ms", downlink = { delay = "22ms" }, gap_ms = 0 }
 
 [app]
 sender = "ground"                       # or "terminal"
-image = "satlink-endpoint"              # replace with your own image
 file_size = "500M"
 recv_cmd = "..."
 send_cmd = "..."
@@ -179,11 +179,12 @@ Outage recovery time and switch stalls are read off the plot and time series.
 
 - `satlink-endpoint`: Debian-based image with iperf3, UFTP, sha256sum, coreutils.
 - `docker/compose.yml`: `ground` and `terminal` on one user-defined bridge.
-- Your own apps replace the endpoint image via `image` and commands in the scenario.
+- Your own apps replace the endpoint image with `satlink up --image <image>`; commands come from the scenario.
 
 ## Repository layout
 
 ```
+.gitignore
 satlink.py                 # entire tool: CLI, tc builder, discovery, timeline, harness, metrics, plot
 presets/{leo,narrowband,gigabit}.toml
 scenarios/
@@ -250,3 +251,7 @@ README.md
 - Separate terrestrial return path with policy routing
 - VM support (libvirt `vnetX` / tap interfaces)
 - MTU knob, IPv6, TCP congestion control knobs
+
+## Implementation status
+
+Phases 1 to 4 are implemented in `satlink.py`. Checked without root-level netem or Docker: dry-run command generation, timeline ordering, tbf rate accuracy (64 kbit to 1 Gbit, on a veth pair), `validate`'s iperf3 parsing, plots. Still to run on a real host: veth discovery, netem behavior, `validate`, UFTP baseline, the 1 Gbit + 600 ms go/no-go. See README.md "Status".

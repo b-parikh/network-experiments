@@ -1,0 +1,24 @@
+# Downlink narrows in steps from 200 Mbit/s to 500 kbit/s during a 150 s TCP transfer.
+preset = "leo"
+
+[[event]]
+t = 30
+set = { "downlink.rate" = "50mbit" }
+
+[[event]]
+t = 60
+set = { "downlink.rate" = "10mbit" }
+
+[[event]]
+t = 90
+set = { "downlink.rate" = "2mbit" }
+
+[[event]]
+t = 120
+set = { "downlink.rate" = "500kbit" }
+
+[app]
+sender = "ground"
+recv_cmd = "iperf3 -s -1"
+send_cmd = "iperf3 -c {peer} -t 150"
+timeout = 300

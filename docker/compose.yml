@@ -1,0 +1,31 @@
+# Two endpoints on one bridge. satlink shapes the host-side veths, so no NET_ADMIN is needed here.
+# Replace the image (satlink up --image ...) to test your own application.
+name: satlink
+x-endpoint: &endpoint
+  image: ${SATLINK_IMAGE:-satlink-endpoint}
+  build: ./endpoint
+  command: sleep infinity
+  init: true
+
+services:
+  ground:
+    <<: *endpoint
+    container_name: satlink-ground
+    hostname: ground
+    networks:
+      sat: { ipv4_address: 172.30.0.2 }
+  terminal:
+    <<: *endpoint
+    container_name: satlink-terminal
+    hostname: terminal
+    networks:
+      sat: { ipv4_address: 172.30.0.3 }
+
+networks:
+  sat:
+    name: satlink-net
+    driver_opts:
+      com.docker.network.bridge.name: satlink0
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

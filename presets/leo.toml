@@ -1,0 +1,13 @@
+# LEO terminal: asymmetric, ~50 ms RTT, 300 ms of modem buffer.
+[downlink]
+rate = "200mbit"
+delay = "25ms"        # one-way
+queue_ms = 300
+
+[uplink]
+rate = "15mbit"
+delay = "25ms"
+queue_ms = 300
+
+[isl]
+delay = "0ms"         # extra one-way delay from inter-satellite hops, both directions

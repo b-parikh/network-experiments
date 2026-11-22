@@ -1,0 +1,11 @@
+# UFTP (rate-based UDP file transfer), unicast, 50 MiB, sent at 150 Mbit/s over the LEO preset.
+# UFTP option syntax is from the Debian package's usage text; not yet verified end to end.
+preset = "leo"
+
+[app]
+sender = "ground"
+file_size = "50M"
+recv_file = "/data/recv/payload.bin"
+recv_cmd = "uftpd -d -E -D /data/recv"
+send_cmd = "uftp -H {peer} -R 150000 -Y none -C none -x 2 {file}"
+timeout = 300
