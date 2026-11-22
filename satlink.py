@@ -4,7 +4,7 @@
 Roles: `satellite` and `ground`. Downlink = satellite -> ground, uplink = ground -> satellite.
 Each direction is shaped on the host-side veth of the RECEIVING container:
 
-    root  1:  netem  (one-way delay + isl delay, jitter, raw netem options)
+    root  1:  netem  (one-way delay, jitter, raw netem options)
     child 10: tbf    (rate and FIFO depth in ms; the bottleneck)
 
 Needs root, Docker, iproute2, ethtool and nsenter. See README.md and plan.md.
@@ -34,7 +34,7 @@ RECEIVER = {"down": "ground", "up": "satellite"}  # whose host veth carries the 
 SECTION = {"down": "downlink", "up": "uplink"}
 DIR_OF = {v: k for k, v in SECTION.items()}
 DEFAULT_DIR = {"rate": "100mbit", "delay": "25ms", "jitter": "0ms", "queue_ms": 300, "netem": ""}
-EVENT_KINDS = ("set", "outage", "switch")
+EVENT_KINDS = ("set", "outage")
 
 DRY = False
 TCLOG = None
@@ -134,7 +134,8 @@ def validate_scenario(cfg):
             raise ValueError(f"[{sec}] unknown keys {sorted(bad)}; allowed {sorted(DEFAULT_DIR)}")
         d = {**DEFAULT_DIR, **d}
         parse_rate(d["rate"]), parse_time(d["delay"]), parse_time(d["jitter"]), float(d["queue_ms"])
-    parse_time(cfg.get("isl", {}).get("delay", "0ms"))
+    if "isl" in cfg:
+        raise ValueError("[isl] was removed; put the full one-way delay in [downlink]/[uplink] delay")
     for ev in cfg.get("event", []):
         if "t" not in ev:
             raise ValueError(f"event without t: {ev}")
@@ -155,8 +156,7 @@ class Link:
     def __init__(self, cfg, devs):
         self.devs = devs
         self.cfg = {d: {**DEFAULT_DIR, **cfg.get(SECTION[d], {})} for d in DIRS}
-        self.isl = parse_time(cfg.get("isl", {}).get("delay", "0ms"))
-        self.mode = {d: "up" for d in DIRS}  # up | outage (chain flushed) | gap (switch blackout)
+        self.mode = {d: "up" for d in DIRS}  # up | outage (chain flushed)
         self.applied = {d: None for d in DIRS}
         self.lock = threading.RLock()
 
@@ -165,9 +165,9 @@ class Link:
         return parse_rate(self.cfg[d]["rate"])
 
     def delay(self, d):
-        return parse_time(self.cfg[d]["delay"]) + self.isl
+        return parse_time(self.cfg[d]["delay"])
 
-    def netem_args(self, d, blackhole=False):
+    def netem_args(self, d):
         c = self.cfg[d]
         delay, jitter = self.delay(d), parse_time(c["jitter"])
         # netem sits in front of the bottleneck, so it holds everything in flight for `delay`.
@@ -176,7 +176,7 @@ class Link:
         a = ["limit", limit, "delay", f"{round(delay * 1e6)}us"]
         if jitter:
             a.append(f"{round(jitter * 1e6)}us")
-        a += ["loss", "100%"] if blackhole else shlex.split(c["netem"])
+        a += shlex.split(c["netem"])
         return [str(x) for x in a]
 
     def tbf_args(self, d):
@@ -236,46 +236,17 @@ class Link:
                 self.build(d)
 
     def set_many(self, changes):
-        """changes: {"downlink.rate": "20mbit", "isl.delay": "12ms", ...}"""
+        """changes: {"downlink.rate": "20mbit", "uplink.delay": "30ms", ...}"""
         with self.lock:
             for key, val in changes.items():
                 sec, field = key.split(".", 1)
-                if sec == "isl" and field == "delay":
-                    self.isl = parse_time(val)
-                elif sec in DIR_OF and field in DEFAULT_DIR:
+                if sec in DIR_OF and field in DEFAULT_DIR:
                     self.cfg[DIR_OF[sec]][field] = val
                 else:
                     raise ValueError(f"cannot set {key!r}")
-            validate_scenario({SECTION[d]: self.cfg[d] for d in DIRS} | {"isl": {"delay": f"{self.isl}s"}})
+            validate_scenario({SECTION[d]: self.cfg[d] for d in DIRS})
             for d in DIRS:
                 self.sync(d)
-
-    def switch_begin(self, spec):
-        """Main-satellite switch: new ISL path and downlink/uplink values; optional blackout."""
-        with self.lock:
-            ch = {}
-            if "isl_delay" in spec:
-                ch["isl.delay"] = spec["isl_delay"]
-            for sec in SECTION.values():
-                for k, v in spec.get(sec, {}).items():
-                    ch[f"{sec}.{k}"] = v
-            gap = float(spec.get("gap_ms", 0))
-            if gap <= 0:
-                return self.set_many(ch)
-            for d in DIRS:  # blackout: drop new arrivals, keep packets already in flight
-                if self.mode[d] == "up":
-                    n = self.netem_args(d, blackhole=True)
-                    self._tc("qdisc", "change", "dev", self.devs[d], "root", "handle", "1:", "netem", *n)
-                    self.applied[d]["netem"] = n
-                    self.mode[d] = "gap"
-            self.set_many(ch)  # recorded now, applied when the gap ends
-
-    def switch_end(self):
-        with self.lock:
-            for d in DIRS:
-                if self.mode[d] == "gap":
-                    self.mode[d] = "up"
-                    self.sync(d)
 
 
 # ----------------------------------------------------------------------------- timeline
@@ -287,18 +258,12 @@ def build_actions(events, link):
         t = float(ev["t"])
         if "set" in ev:
             acts.append((t, "set", json.dumps(ev["set"]), functools.partial(link.set_many, ev["set"])))
-        elif "outage" in ev:
+        else:
             o = ev["outage"]
             dirs = DIRS if o.get("dir", "both") == "both" else (o["dir"],)
             tag = f"{o.get('dir', 'both')} {o['duration']}s"
             acts.append((t, "outage_start", tag, functools.partial(link.outage_start, dirs)))
             acts.append((t + float(o["duration"]), "outage_end", tag, functools.partial(link.outage_end, dirs)))
-        else:
-            s = ev["switch"]
-            acts.append((t, "switch", json.dumps(s), functools.partial(link.switch_begin, s)))
-            gap = float(s.get("gap_ms", 0))
-            if gap > 0:
-                acts.append((t + gap / 1000, "switch_end", "", link.switch_end))
     return sorted(acts, key=lambda a: a[0])
 
 
@@ -385,13 +350,13 @@ def make_plot(outdir, marks, title):
                 ax.axvspan(start - 1, float(x["t"]) if x else t[-1], color="tab:red", alpha=0.15)
                 start = None
         for m in marks:
-            if m["kind"] in ("set", "switch"):
+            if m["kind"] == "set":
                 ax.axvline(m["t"], color="k", ls=":", lw=0.8)
         ax.set_ylabel("Mbit/s")
         ax.set_title(names[d])
         ax.set_ylim(0, max(float(x["cfg_rate_mbps"]) for x in r) * 1.3)  # headroom for the legend
         ax.legend(loc="upper right")
-    axes[1].set_xlabel("seconds since transfer start (red = outage, dotted = set/switch)")
+    axes[1].set_xlabel("seconds since transfer start (red = outage, dotted = set)")
     fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(outdir / "plot.png", dpi=110)
@@ -645,7 +610,7 @@ def cmd_validate(a):
         link = Link(cfg, devs)
         link.apply_all()
         results = []
-        # RTT: satellite -> ground pays the downlink, the echo pays the uplink (+ ISL both ways)
+        # RTT: satellite -> ground pays the downlink, the echo pays the uplink
         exp = link.delay("down") + link.delay("up") + 84 * 8 / link.rate("down") + 84 * 8 / link.rate("up")
         out = dexec("satellite", f"ping -c 5 -i 0.3 -q {IP['ground']}", check=False).stdout
         m = re.search(r"= [\d.]+/([\d.]+)/", out)
