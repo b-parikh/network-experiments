@@ -1,8 +1,11 @@
 FROM debian:bookworm-slim
+# Debian's bundled pip (23.0.1) fails with InconsistentCandidate on fastcrc when resolving
+# cfdp-py, so the venv's pip is upgraded before installing it.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends iperf3 uftp iputils-ping iproute2 procps coreutils tcpdump ca-certificates python3 python3-venv \
  && rm -rf /var/lib/apt/lists/* \
  && python3 -m venv /opt/cfdp \
+ && /opt/cfdp/bin/pip install --no-cache-dir -U pip \
  && /opt/cfdp/bin/pip install --no-cache-dir cfdp-py==0.7.0 \
  && mkdir -p /data
 # CFDP sender/receiver (build context is the repository root, see docker/compose.yml)

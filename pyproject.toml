@@ -1,0 +1,12 @@
+[project]
+name = "satlink"
+version = "0.1.0"
+description = "Satellite link emulator and CFDP test entity"
+requires-python = ">=3.11"
+dependencies = ["cfdp-py==0.7.0"]   # used by apps/cfdp/cfdp_entity.py (local runs and the endpoint image)
+
+[project.optional-dependencies]
+plots = ["matplotlib"]              # satlink.py plots; the tool runs without it
+
+[tool.uv]
+package = false
