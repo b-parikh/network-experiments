@@ -1,0 +1,15 @@
+# CFDP Class 2 through a 3-minute silent outage in both directions. The entities are blind to it,
+# so the timers must outlast the outage: ack/nak interval 60 s x limit 5 = 300 s.
+# With the library defaults (10 s x 2) the sender would give up (POSITIVE_ACK_LIMIT_REACHED).
+preset = "leo"
+
+[[event]]
+t = 10
+outage = { duration = 180, dir = "both" }
+
+[app]
+sender = "ground"
+file_size = "100M"
+recv_cmd = "cfdp recv --local-id 2 --remote-id 1 --out-dir /data --once --class 2 --ack-interval 60 --ack-limit 5 --nak-interval 60 --nak-limit 5"
+send_cmd = "cfdp send {file} {out} --local-id 1 --remote-id 2 --remote {peer}:4444 --class 2 --rate 50mbit --ack-interval 60 --ack-limit 5 --nak-interval 60 --nak-limit 5"
+timeout = 900

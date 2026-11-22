@@ -1,3 +1,4 @@
 results/
 __pycache__/
 .satlink-state.json
+.venv/

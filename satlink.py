@@ -436,6 +436,16 @@ def dexec(role, cmd, check=True):
 
 # ----------------------------------------------------------------------------- app harness
 
+def last_json_line(path):
+    """Return the last line of a log file if it is a JSON object, else None."""
+    try:
+        lines = Path(path).read_text(errors="replace").strip().splitlines()
+        obj = json.loads(lines[-1]) if lines else None
+    except (OSError, ValueError):
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
 class App:
     """Runs the user's send/receive commands inside the containers and verifies the file."""
 
@@ -500,6 +510,11 @@ class App:
                 except subprocess.TimeoutExpired:
                     dexec(self.recv, "kill -KILL $(cat /tmp/satlink-recv.pid)", check=False)
                     res["receiver_exit"] = "killed"
+        # Apps may end their log with one JSON object (e.g. cfdp_entity.py); keep it in the summary.
+        for key, name in (("sender_report", "sender.log"), ("receiver_report", "receiver.log")):
+            report = last_json_line(self.outdir / name)
+            if report is not None:
+                res[key] = report
         if self.verify and not DRY:
             sha = lambda role, f: (dexec(role, f"sha256sum {f}", check=False).stdout.split() or [""])[0]
             a, b = sha(self.sender, self.vars["file"]), sha(self.recv, self.vars["out"])

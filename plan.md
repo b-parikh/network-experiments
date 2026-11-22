@@ -235,9 +235,28 @@ README.md
 | netem + tbf at 1 Gbps | Tested in Phase 1. Fallback: a router netns on the host with the queue on one interface and netem on another |
 | Development environment | Needs `iproute2`, `ethtool` and a running Docker daemon for testing |
 
+## CFDP sender and receiver (implemented)
+
+Built on `cfdp-py` 0.7.0 (`cfdppy`, Apache-2.0). It supplies the Class 1/2 state machines and PDU encoding; the glue is ours: one script, `cfdp_entity.py`, with `send` and `recv` modes.
+
+- UDP port 4444, one socket per entity. Data PDUs use the downlink, NAK/ACK/Finished PDUs the uplink. Entity IDs: ground 1, terminal 2.
+- `--class 1|2` per run. Class 1: no retransmission, success means EOF sent. Class 2: NAK-based retransmission, success means Finished received.
+- `--rate <tc units>`: token-bucket pacing of every outgoing PDU, retransmissions included. CFDP has no congestion control, so this is how the sender is sized to the link. `0` = unpaced. Default segment 1400 bytes (no IP fragmentation at MTU 1500).
+- Timer flags map one-to-one to cfdp-py (`--ack-interval/--ack-limit`, `--nak-interval/--nak-limit`, `--check-interval/--check-limit`). cfdp-py has no inactivity timer; `--timeout` is a local wall-clock limit. Entities are blind to outages, so outage scenarios set long timers. Library defaults (10 s intervals, limit 2) end a transaction in roughly 20 s of silence.
+- Exit codes: 0 success, 2 CFDP fault (condition code printed), 3 local timeout. The last log line is a JSON report (condition code, bytes, duration, PDUs, retransmitted bytes, NAK counts); satlink copies it into `summary.json` as `sender_report` / `receiver_report`.
+- One file per run. Receiver writes under `--out-dir` (default `/data`); the sender's DEST path is mapped into it.
+- Python ceiling: about 220 Mbit/s of file data per sender on a modern core, so the 1 Gbit/s end of the range needs a non-Python CFDP implementation (see Later).
+- Image: `python3` plus `cfdp-py==0.7.0` in `/opt/cfdp`, `cfdp` on the PATH. The compose build context is now the repository root.
+- Local development uses uv (`pyproject.toml`, `.venv`).
+- Example scenarios: Class 2 and Class 1 over LEO with bursty loss, narrowband (NAKs over a 64 kbit/s uplink), long outage with long timers.
+
+Testing plan: loopback transfer per class with sha256 check; paced transfer over a rate-limited veth pair; loss and blackhole injection (Class 2 must deliver an identical file, Class 1 must report missing data; default timers must fault in an outage, long timers must complete). Real link tests run through satlink on a host with netem and Docker.
+
 ## Later
 
 - Live control over a Unix socket during automated runs
+- Faster CFDP entity for gigabit rates (C/Rust implementation, or multi-process sender)
+- Link-aware CFDP freeze/thaw: satlink tells the CFDP entities when the link goes down or up (like a known contact schedule) so they suspend timers during outages, instead of relying on long blind timers
 - Periodic LEO handovers (15s, wall-clock aligned, seeded delay draws, loss bursts)
 - CAKE/AQM queue option
 - Cross-traffic sidecars and timeline events

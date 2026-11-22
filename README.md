@@ -97,6 +97,27 @@ The timeline starts when the sender starts. The run ends when `send_cmd` exits o
 
 Outage recovery time is the gap between the end of the shaded region and delivered rate coming back in the plot or CSV.
 
+## CFDP sender and receiver
+
+`apps/cfdp/cfdp_entity.py` is a CFDP (CCSDS 727.0-B) file sender and receiver over UDP, built on [cfdp-py](https://github.com/us-irs/cfdp-py) 0.7.0. The endpoint image has it installed as `cfdp`.
+
+```
+cfdp send FILE DEST --local-id 1 --remote-id 2 --remote HOST:4444 --class 2 --rate 150mbit
+cfdp recv --local-id 2 --remote-id 1 --out-dir /data --once
+```
+
+- `--class 1`: unacknowledged, no retransmission; the sender cannot know the outcome. `--class 2`: acknowledged, NAK-based retransmission, success means the receiver's Finished PDU arrived.
+- `--rate` paces every outgoing PDU, retransmissions included (`0` = unpaced). CFDP has no congestion control, so size this to the link. Unpaced, the sender overruns the receiver's socket buffer and triggers a NAK storm (measured: 8 MiB took 101 s instead of 2 s).
+- The Python sender tops out near 220 Mbit/s of file data (about 20k PDUs/s) on a modern core, so the top of a gigabit downlink is out of reach for it; use `--rate` of about 150mbit or less. `--segment` (default 1400) keeps PDUs under the 1500-byte MTU.
+- Timers: `--ack-interval/--ack-limit`, `--nak-interval/--nak-limit`, `--check-interval/--check-limit` (library defaults 10 s x 2). The entities are blind to outages. If the link is dark longer than interval x limit, the transaction is cancelled (`POSITIVE_ACK_LIMIT_REACHED`, `NAK_LIMIT_REACHED`), so outage scenarios set long timers. cfdp-py has no inactivity timer; `--timeout` is a local wall-clock limit.
+- The sender's UDP and the receiver's socket buffers are requested at 8 MiB; the kernel caps them at `net.core.rmem_max`/`wmem_max`. Raise those sysctls on the host and in containers for fast links.
+- Exit codes: 0 success, 2 CFDP fault or incomplete file, 3 local timeout or terminated early. The last output line is a JSON report (condition, durations, goodput, retransmitted bytes, NAKs, PDU counts, Finished PDU contents). satlink copies it into `summary.json` as `sender_report` / `receiver_report`.
+- Ports: both entities use UDP 4444. IDs: ground 1, terminal 2.
+
+Scenarios: `cfdp-class2-leo`, `cfdp-class1-leo` (fails the sha256 check by design under loss), `cfdp-narrowband`, `cfdp-long-outage`.
+
+Local runs and development use uv: `uv venv && uv pip install -e .[plots]` or `uv pip install cfdp-py==0.7.0`, then `.venv/bin/python apps/cfdp/cfdp_entity.py ...`.
+
 ## Behavior to know about
 
 - Offloads (TSO/GSO/GRO) are disabled on both ends of each veth. With them on, netem treats a 64 KB super-packet as one packet and loss is wrong. Rerun `up` after restarting containers.
@@ -112,3 +133,5 @@ Verified in a sandbox without netem or Docker: command generation and timeline o
 Not yet run on a real host: `up`/veth discovery, netem delay/jitter/loss, `validate` end to end, the `uftp` baseline (option syntax taken from the Debian usage text), and the 1 Gbit + 600 ms case. Run `validate` first on your host; if the netem + tbf chain does not hold at 1 Gbit, see the fallback in plan.md.
 
 Not in v1 (see "Later" in plan.md): live control, periodic LEO handovers, CAKE, cross traffic, VM support.
+
+CFDP entity, verified on loopback through a lossy UDP relay (not through satlink or real netem): Class 2 delivers an identical file under 5% loss in both directions (271 NAKs, 456 KB retransmitted of 8 MiB); Class 1 reports `DATA_INCOMPLETE`; a 10 s outage over EOF cancels the transfer with default-style short timers and completes with long timers; pacing is accurate from 2 to 40 Mbit/s; `SIGTERM` still yields the report. Not yet run: the image build, the CFDP scenarios through satlink, gemodel loss.
