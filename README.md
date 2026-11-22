@@ -10,6 +10,8 @@ Emulate an asymmetric satellite link between two Docker containers with Linux `t
 
 Each direction is `netem` (delay, jitter, loss) feeding a `tbf` FIFO (rate, buffer depth in ms). Nothing is shaped inside the containers, which keeps TCP results honest.
 
+New to tc and netem? Start with [docs/tc-tutorial.md](docs/tc-tutorial.md).
+
 ## Requirements
 
 Linux host with root, Docker Engine with the compose plugin, `iproute2`, `ethtool`, `util-linux` (nsenter), Python 3.11+. The kernel needs `sch_netem` and `sch_tbf`. Optional: `matplotlib` for `plot.png`.
