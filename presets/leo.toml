@@ -1,10 +1,12 @@
-# LEO satellite to ground station: asymmetric, ~50 ms RTT, 300 ms of modem buffer.
+# LEO satellite to ground station: asymmetric, ~50 ms RTT.
+# queue_ms is about one base RTT (1 BDP): enough for a TCP flow to keep the link busy,
+# without a standing queue. Deep buffers are tested in scenarios/bufferbloat.toml.
 [downlink]
 rate = "200mbit"
 delay = "25ms"        # one-way
-queue_ms = 300
+queue_ms = 50
 
 [uplink]
 rate = "15mbit"
 delay = "25ms"
-queue_ms = 300
+queue_ms = 50

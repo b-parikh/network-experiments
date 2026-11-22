@@ -270,3 +270,5 @@ sudo ./satlink.py run scenarios/narrowing-link.toml
 
 `man tc`, `man tc-netem` and `man tc-tbf` are short and worth skimming after
 step 5. They are on the host; the slim image has no man pages.
+
+Why TCP runs slower than the link on long-delay paths: [window-rtt-bdp.md](window-rtt-bdp.md).

@@ -1,10 +1,10 @@
-# Top of the range: 1 Gbit/s downlink, small buffer.
+# Top of the range: 1 Gbit/s downlink, ~50 ms RTT. queue_ms is about one base RTT (1 BDP).
 [downlink]
 rate = "1gbit"
 delay = "25ms"
-queue_ms = 100
+queue_ms = 50
 
 [uplink]
 rate = "50mbit"
 delay = "25ms"
-queue_ms = 100
+queue_ms = 50

@@ -1,0 +1,17 @@
+# Deep modem buffer: the leo link with 300 ms of FIFO in each direction (6x the BDP).
+# A loss-based TCP flow fills it, so RTT under load climbs toward ~350 ms.
+# Compare with scenarios/iperf3-baseline.toml (same link, 50 ms buffer): throughput should be
+# similar, while backlog_bytes in timeseries.csv is far higher here.
+preset = "leo"
+
+[downlink]
+queue_ms = 300
+
+[uplink]
+queue_ms = 300
+
+[app]
+sender = "satellite"
+recv_cmd = "iperf3 -s -1"
+send_cmd = "iperf3 -c {peer} -t 60"
+timeout = 180

@@ -26,7 +26,7 @@ v1 is deliberately minimal. Deferred items are listed under [Later](#later).
 | Roles | `satellite` (source of the file in the downlink case) and `ground` (ground station). Downlink = satellite -> ground |
 | Outages | Silent blackhole, `up`, `down` or `both`. Queued packets are dropped |
 | Return path | Same path as forward, independent up/down shaping |
-| Queueing | FIFO only, sized in ms |
+| Queueing | FIFO only, sized in ms. Presets use about one base RTT (1 BDP); deep buffers live in a dedicated scenario |
 | Loss/jitter | Raw netem options passed through (e.g. Gilbert-Elliott) |
 | Scenarios | TOML timelines with step changes, plus 3 presets |
 | Run end | Ends when the transfer exits or times out. Timeline holds its last state if it runs out |
@@ -126,9 +126,9 @@ Parsed with `tomllib` (Python 3.11+ stdlib). Two event types: `set`, `outage`.
 
 | Preset | Down / Up | One-way delay | Queue |
 |---|---|---|---|
-| `leo` | 200M / 15M | 25ms | 300ms |
-| `narrowband` | 300k / 64k | 30ms | 1000ms |
-| `gigabit` | 1G / 50M | 25ms | 100ms |
+| `leo` | 200M / 15M | 25ms | 50ms |
+| `narrowband` | 300k / 64k | 30ms | 60ms |
+| `gigabit` | 1G / 50M | 25ms | 50ms |
 
 ## Results
 
@@ -157,6 +157,7 @@ satlink.py                 # entire tool: CLI, tc builder, discovery, timeline, 
 presets/{leo,narrowband,gigabit}.toml
 scenarios/
   iperf3-baseline.toml
+  bufferbloat.toml
   uftp-baseline.toml
   narrowing-link.toml
   long-outage.toml

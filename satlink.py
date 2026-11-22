@@ -610,9 +610,12 @@ def cmd_validate(a):
         link = Link(cfg, devs)
         link.apply_all()
         results = []
-        # RTT: satellite -> ground pays the downlink, the echo pays the uplink
-        exp = link.delay("down") + link.delay("up") + 84 * 8 / link.rate("down") + 84 * 8 / link.rate("up")
-        out = dexec("satellite", f"ping -c 5 -i 0.3 -q {IP['ground']}", check=False).stdout
+        # RTT: satellite -> ground pays the downlink delay, the echo pays the uplink delay.
+        # No serialization term: an idle tbf has a full bucket, so a small ping leaves at once.
+        exp = link.delay("down") + link.delay("up")
+        # Warm-up ping first: a cold ARP cache makes the first ping cross the link twice.
+        out = dexec("satellite", f"ping -c 1 -W 5 {IP['ground']} >/dev/null; "
+                                 f"ping -c 5 -i 0.3 -q {IP['ground']}", check=False).stdout
         m = re.search(r"= [\d.]+/([\d.]+)/", out)
         rtt = float(m[1]) / 1e3 if m else None
         ok = rtt is not None and abs(rtt - exp) <= max(0.003, 0.1 * exp)

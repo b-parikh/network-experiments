@@ -1,10 +1,12 @@
-# Degraded/narrowband link with a deep buffer (bufferbloat).
+# Degraded/narrowband link, ~60 ms RTT. queue_ms is about one base RTT (1 BDP).
+# At these rates that is only a few packets: tbf always allows rate x latency plus its burst
+# (at least 4500 bytes, three full packets), so full-size packets still fit.
 [downlink]
 rate = "300kbit"
 delay = "30ms"
-queue_ms = 1000
+queue_ms = 60
 
 [uplink]
 rate = "64kbit"
 delay = "30ms"
-queue_ms = 1000
+queue_ms = 60
