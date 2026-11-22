@@ -23,7 +23,7 @@ v1 is deliberately minimal. Deferred items are listed under [Later](#later).
 | Host | Native Linux with root, Docker Engine |
 | Emulator location | On the Docker host, shaping host-side veth interfaces. No `NET_ADMIN` in app containers |
 | Endpoints | One sender, one receiver. Files move in both directions |
-| Roles | `ground` (gateway side) and `terminal` (user side). Downlink = ground -> terminal |
+| Roles | `satellite` (source of the file in the downlink case) and `ground` (ground station). Downlink = satellite -> ground |
 | Outages | Silent blackhole, `up`, `down` or `both`. Queued packets are dropped |
 | Return path | Same path as forward, independent up/down shaping |
 | Queueing | FIFO only, sized in ms |
@@ -36,7 +36,7 @@ v1 is deliberately minimal. Deferred items are listed under [Later](#later).
 ## Architecture
 
 ```
- [ground container] --veth-- docker bridge --veth-- [terminal container]
+ [satellite container] --veth-- docker bridge --veth-- [ground container]
           ^                                                ^
   host-side veth egress = UPLINK chain        host-side veth egress = DOWNLINK chain
 ```
@@ -79,10 +79,10 @@ For each container, read `/sys/class/net/eth0/iflink` inside its namespace (`nse
 
 ```
 source sat --[ISL path: isl_delay]--> main sat --[downlink: rate/delay/loss/queue]--> ground
- ("ground" container)                                                      ("terminal" container)
+ ("satellite" container)                                                  ("ground" container)
 ```
 
-- The `ground` container plays the source satellite and `terminal` plays the receiving ground station. Downlink stays ground -> terminal.
+- The `satellite` container is the source satellite and `ground` is the receiving ground station. Downlink is satellite -> ground.
 - One-way delay per direction = `delay + isl_delay`. `isl_delay` applies to both directions at the same moment. `isl_delay = 0` is the plain bent-pipe case.
 
 ### Main-satellite switch event
@@ -145,7 +145,7 @@ t = 300
 switch = { isl_delay = "12ms", downlink = { delay = "22ms" }, gap_ms = 0 }
 
 [app]
-sender = "ground"                       # or "terminal"
+sender = "satellite"                    # or "ground"
 file_size = "500M"
 recv_cmd = "..."
 send_cmd = "..."
@@ -178,7 +178,7 @@ Outage recovery time and switch stalls are read off the plot and time series.
 ## Containers
 
 - `satlink-endpoint`: Debian-based image with iperf3, UFTP, sha256sum, coreutils.
-- `docker/compose.yml`: `ground` and `terminal` on one user-defined bridge.
+- `docker/compose.yml`: `satellite` and `ground` on one user-defined bridge.
 - Your own apps replace the endpoint image with `satlink up --image <image>`; commands come from the scenario.
 
 ## Repository layout

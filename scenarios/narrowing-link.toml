@@ -18,7 +18,7 @@ t = 120
 set = { "downlink.rate" = "500kbit" }
 
 [app]
-sender = "ground"
+sender = "satellite"
 recv_cmd = "iperf3 -s -1"
 send_cmd = "iperf3 -c {peer} -t 150"
 timeout = 300

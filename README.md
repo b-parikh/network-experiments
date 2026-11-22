@@ -3,9 +3,9 @@
 Emulate an asymmetric satellite link between two Docker containers with Linux `tc` (netem + tbf), to test file-transfer applications and protocols. One Python script (`satlink.py`, stdlib only; matplotlib optional for plots). Design and rationale: [plan.md](plan.md).
 
 ```
-[ground] --veth-- bridge satlink0 --veth-- [terminal]
-   downlink (ground -> terminal): shaped on terminal's host-side veth
-   uplink   (terminal -> ground): shaped on ground's host-side veth
+[satellite] --veth-- bridge satlink0 --veth-- [ground]
+   downlink (satellite -> ground): shaped on ground's host-side veth
+   uplink   (ground -> satellite): shaped on satellite's host-side veth
 ```
 
 Each direction is `netem` (delay, jitter, loss) feeding a `tbf` FIFO (rate, buffer depth in ms). Nothing is shaped inside the containers, which keeps TCP results honest.
@@ -23,7 +23,7 @@ sudo ./satlink.py run scenarios/narrowing-link.toml
 sudo ./satlink.py down
 ```
 
-Your own application: `sudo ./satlink.py up --image my-image` (the image needs `sh`, `timeout`, `sha256sum`, `head`; containers run `sleep infinity` and you start your tools through the scenario's `send_cmd` / `recv_cmd`). Addresses: ground `172.30.0.2`, terminal `172.30.0.3`.
+Your own application: `sudo ./satlink.py up --image my-image` (the image needs `sh`, `timeout`, `sha256sum`, `head`; containers run `sleep infinity` and you start your tools through the scenario's `send_cmd` / `recv_cmd`). Addresses: satellite `172.30.0.2`, ground station `172.30.0.3`.
 
 ## Commands
 
@@ -44,7 +44,7 @@ For manual testing: `apply leo`, run your tools with `docker exec`, and use `out
 ```toml
 preset = "leo"                          # presets/*.toml: leo, narrowband, gigabit
 
-[downlink]                              # ground -> terminal. [uplink] has the same keys
+[downlink]                              # satellite -> ground. [uplink] has the same keys
 rate = "200mbit"                        # tc units: bit, kbit, mbit, gbit
 delay = "25ms"                          # one-way
 jitter = "4ms"                          # note: jitter also causes reordering
@@ -67,7 +67,7 @@ t = 300                                 # main-satellite switch: ISL path and do
 switch = { isl_delay = "12ms", downlink = { delay = "22ms", rate = "150mbit" }, gap_ms = 0 }
 
 [app]                                   # optional; without it the timeline just runs against whatever you start
-sender = "ground"                       # or "terminal"
+sender = "satellite"                    # or "ground"
 file_size = "500M"                      # optional: random file generated on the sender; sha256 verified after
 send_cmd = "..."                        # run in the sender container
 recv_cmd = "..."                        # run in the receiver container, started first

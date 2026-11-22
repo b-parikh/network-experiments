@@ -1,8 +1,8 @@
-# Plain TCP iperf3 over the LEO preset, ground -> terminal (downlink). No timeline.
+# Plain TCP iperf3 over the LEO preset, satellite -> ground (downlink). No timeline.
 preset = "leo"
 
 [app]
-sender = "ground"
+sender = "satellite"
 recv_cmd = "iperf3 -s -1"
 send_cmd = "iperf3 -c {peer} -t 30"
 timeout = 120

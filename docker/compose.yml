@@ -8,16 +8,16 @@ x-endpoint: &endpoint
   init: true
 
 services:
+  satellite:
+    <<: *endpoint
+    container_name: satlink-satellite
+    hostname: satellite
+    networks:
+      sat: { ipv4_address: 172.30.0.2 }
   ground:
     <<: *endpoint
     container_name: satlink-ground
     hostname: ground
-    networks:
-      sat: { ipv4_address: 172.30.0.2 }
-  terminal:
-    <<: *endpoint
-    container_name: satlink-terminal
-    hostname: terminal
     networks:
       sat: { ipv4_address: 172.30.0.3 }
 
