@@ -53,20 +53,13 @@ jitter = "4ms"                          # note: jitter also causes reordering
 queue_ms = 300                          # modem buffer depth (FIFO)
 netem = "loss gemodel 0.5% 40%"         # raw netem options appended as-is (loss, duplicate, corrupt, ...)
 
-[isl]
-delay = "25ms"                          # extra one-way delay from ISL hops, applied to both directions
-
 [[event]]
 t = 60                                  # seconds after the transfer starts
-set = { "downlink.rate" = "20mbit" }    # any [downlink]/[uplink] key, or "isl.delay"
+set = { "downlink.rate" = "20mbit" }    # any [downlink]/[uplink] key
 
 [[event]]
 t = 120
 outage = { duration = 180, dir = "both" }   # silent blackhole; queued and in-flight packets are lost
-
-[[event]]
-t = 300                                 # main-satellite switch: ISL path and downlink change together
-switch = { isl_delay = "12ms", downlink = { delay = "22ms", rate = "150mbit" }, gap_ms = 0 }
 
 [app]                                   # optional; without it the timeline just runs against whatever you start
 sender = "satellite"                    # or "ground"
@@ -81,9 +74,9 @@ In `send_cmd`/`recv_cmd`, `{peer}` is the other container's IP, `{self}` its own
 
 The timeline starts when the sender starts. The run ends when `send_cmd` exits or `timeout` hits (exit 137). If the timeline runs out first, the link keeps its last state. After the run the link is cleared, the receiver is stopped and the file is verified.
 
-### Path switches and reordering
+### Delay changes and reordering
 
-`switch` and `set` use `tc qdisc change`, so packets already queued keep their old delay. A shorter path lets new packets overtake old ones (reordering); a longer path gives a delivery gap. `gap_ms` adds a blackout during which new arrivals are dropped.
+`set` uses `tc qdisc change`, so packets already queued keep their old delay. Lowering `delay` lets new packets overtake old ones (reordering); raising it gives a delivery gap.
 
 ## CFDP sender and receiver
 
@@ -122,7 +115,7 @@ Scenarios: `cfdp-class2-leo`, `cfdp-class1-leo`, `cfdp-narrowband`, `cfdp-long-o
 |---|---|
 | `summary.json` | Exit codes, duration, goodput, sha256 match, executed events |
 | `timeseries.csv` | 1 s samples per direction: delivered rate, drops, backlog, configured rate and delay, link mode |
-| `plot.png` | Delivered vs configured rate per direction; outages shaded; set/switch events dotted |
+| `plot.png` | Delivered vs configured rate per direction; outages shaded; set events dotted |
 | `tc.log` | Every tc command with timestamps |
 | `sender.log`, `receiver.log`, `scenario.effective.json` | Tool output and the resolved scenario |
 

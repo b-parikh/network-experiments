@@ -8,6 +8,3 @@ queue_ms = 300
 rate = "15mbit"
 delay = "25ms"
 queue_ms = 300
-
-[isl]
-delay = "0ms"         # extra one-way delay from inter-satellite hops, both directions

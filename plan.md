@@ -8,7 +8,7 @@ Test file-transfer applications and protocols (TCP, custom UDP, QUIC, DTN/CFDP) 
 - A link that narrows in steps over time
 - Random and bursty packet loss
 - Abrupt outages that reacquire minutes later (silent blackhole, both ways or one way)
-- ISL relay: file originates on a source satellite, crosses inter-satellite links to the main satellite, then downlinks. Path changes alter latency.
+- Topology: one satellite and one ground station, nothing else. No user terminal, no inter-satellite links.
 
 Use standard Linux tools (`tc`/netem, `tbf`, `ip`, `ethtool`, iperf3, UFTP, Docker). Glue is a single Python stdlib script plus matplotlib for plots.
 
@@ -31,7 +31,6 @@ v1 is deliberately minimal. Deferred items are listed under [Later](#later).
 | Scenarios | TOML timelines with step changes, plus 3 presets |
 | Run end | Ends when the transfer exits or times out. Timeline holds its last state if it runs out |
 | Modes | Automated (runs the apps) and manual (only applies the link) |
-| ISL | Delay-only segment, same delay in both directions, changed by `set` or `switch` events |
 
 ## Architecture
 
@@ -50,12 +49,12 @@ Reason: shaping on the sender's own interface lets TCP Small Queues and local qd
 ### Per-direction qdisc chain
 
 ```
-root:  netem  delay <base + isl_delay> [raw netem options: jitter, loss, ...]
+root:  netem  delay <one-way delay> [raw netem options: jitter, loss, ...]
 child: tbf    rate <rate> latency <queue ms>   (FIFO bottleneck)
 ```
 
 - `tbf` is the bottleneck and its `latency` sets the buffer depth in ms.
-- netem orders packets by send time, so a drop in delay lets new packets overtake old ones. This produces realistic reordering on a path switch with no custom code.
+- netem orders packets by send time, so a drop in delay lets new packets overtake old ones. So a `set` that lowers the delay produces realistic reordering with no custom code.
 - netem's built-in `rate` is not used: it serializes packets behind the queue tail (no reordering) and sizes buffers in packets.
 
 ### Offloads
@@ -70,34 +69,10 @@ For each container, read `/sys/class/net/eth0/iflink` inside its namespace (`nse
 
 | Operation | Implementation |
 |---|---|
-| Parameter change (rate, delay, loss, ISL delay) | `tc qdisc change` on the affected stage. Queued packets are kept |
+| Parameter change (rate, delay, loss) | `tc qdisc change` on the affected stage. Queued packets are kept |
 | Outage start | `tc qdisc replace` root with `netem loss 100%`. Flushes queued and in-flight packets |
 | One-way outage | Same, on only one direction's veth |
 | Outage end | Rebuild the chain from current state |
-
-## ISL relay scenario
-
-```
-source sat --[ISL path: isl_delay]--> main sat --[downlink: rate/delay/loss/queue]--> ground
- ("satellite" container)                                                  ("ground" container)
-```
-
-- The `satellite` container is the source satellite and `ground` is the receiving ground station. Downlink is satellite -> ground.
-- One-way delay per direction = `delay + isl_delay`. `isl_delay` applies to both directions at the same moment. `isl_delay = 0` is the plain bent-pipe case.
-
-### Main-satellite switch event
-
-Changes the ISL path and downlink together:
-
-```toml
-[[event]]
-t = 300
-switch = { isl_delay = "12ms", downlink = { delay = "22ms", rate = "150mbit" }, gap_ms = 0 }
-```
-
-- Applied with `tc qdisc change`, so queued packets keep their old delay.
-- Shorter path: new packets arrive before old ones (reordering). Longer path: a delivery gap.
-- `gap_ms` (default 0): brief blackout during the switch; new arrivals are dropped for its duration.
 
 ## CLI
 
@@ -129,9 +104,6 @@ rate = "15mbit"
 delay = "20ms"
 queue_ms = 200
 
-[isl]
-delay = "25ms"
-
 [[event]]
 t = 60
 set = { "downlink.rate" = "20mbit" }
@@ -139,10 +111,6 @@ set = { "downlink.rate" = "20mbit" }
 [[event]]
 t = 120
 outage = { duration = 180, dir = "both" }   # up | down | both
-
-[[event]]
-t = 300
-switch = { isl_delay = "12ms", downlink = { delay = "22ms" }, gap_ms = 0 }
 
 [app]
 sender = "satellite"                    # or "ground"
@@ -152,7 +120,7 @@ send_cmd = "..."
 timeout = 3600
 ```
 
-Parsed with `tomllib` (Python 3.11+ stdlib). Three event types: `set`, `outage`, `switch`.
+Parsed with `tomllib` (Python 3.11+ stdlib). Two event types: `set`, `outage`.
 
 ## Presets
 
@@ -170,10 +138,10 @@ Each run writes `results/<timestamp>-<scenario>/`:
 |---|---|
 | `summary.json` | Exit code, duration, goodput, sha256 match |
 | `timeseries.csv` | 1s samples from `tc -s`: delivered bytes, drops, backlog, configured rate and delay, per direction |
-| `plot.png` | Delivered throughput vs configured rate per direction, with markers for `set`, `outage` and `switch` events |
+| `plot.png` | Delivered throughput vs configured rate per direction, with markers for `set` and `outage` events |
 | `tc.log` | Every tc command applied, timestamped |
 
-Outage recovery time and switch stalls are read off the plot and time series.
+Outage recovery time is read off the plot and time series.
 
 ## Containers
 
@@ -192,7 +160,6 @@ scenarios/
   uftp-baseline.toml
   narrowing-link.toml
   long-outage.toml
-  isl-path-changes.toml
   cfdp-class2-leo.toml, cfdp-class1-leo.toml, cfdp-narrowband.toml, cfdp-long-outage.toml
 apps/cfdp/cfdp_entity.py   # CFDP sender/receiver, installed in the image as cfdp-entity
 docker/
@@ -230,7 +197,7 @@ Scenarios: `cfdp-class2-leo` (bursty loss), `cfdp-class1-leo`, `cfdp-narrowband`
 
 ### Phase 2: timeline
 
-- `run` with `set`, `outage` and `switch` events
+- `run` with `set` and `outage` events
 - Check that a delay drop produces out-of-order datagrams in iperf3 UDP
 
 ### Phase 3: harness and output
@@ -259,15 +226,14 @@ Scenarios: `cfdp-class2-leo` (bursty loss), `cfdp-class1-leo`, `cfdp-narrowband`
 
 - Link-aware CFDP freeze/thaw: satlink tells the entities when an outage starts and ends (a known contact schedule, e.g. via a state file or UDP control message) so they suspend their timers instead of relying on long blind timers
 - Live control over a Unix socket during automated runs
-- Periodic LEO handovers (15s, wall-clock aligned, seeded delay draws, loss bursts)
+- Pass/contact schedules: AOS/LOS windows, elevation-dependent delay and rate
 - CAKE/AQM queue option
 - Cross-traffic sidecars and timeline events
-- `gap_flush` (drop in-flight packets on a switch)
-- Richer metrics: per-outage recovery time, switch stall, finer sampling, delay on a second plot axis
+- Richer metrics: per-outage recovery time, finer sampling, delay on a second plot axis
 - Fuller `validate` (loss-model tolerance, reordering checks)
-- More presets (`leo-degraded`, `leo-congested`, `generic-geo`, `stress`, `isl-relay`)
+- More presets (`leo-degraded`, `leo-congested`, `generic-geo`, `stress`)
 - Scenario labels for roles
-- Orbit-based path generator emitting `switch` events
+- Orbit-based pass generator emitting `set` and `outage` events (delay and rate over a pass, LOS)
 - Explicit per-satellite nodes and DTN store-and-forward (ION, µD3TN, HDTN)
 - Separate terrestrial return path with policy routing
 - VM support (libvirt `vnetX` / tap interfaces)
